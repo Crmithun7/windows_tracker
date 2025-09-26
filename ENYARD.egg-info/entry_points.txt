@@ -1,0 +1,2 @@
+[console_scripts]
+windows_tracker = windows_tracker.core:monitor_active_window

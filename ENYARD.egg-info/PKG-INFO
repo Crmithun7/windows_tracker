@@ -1,0 +1,8 @@
+Metadata-Version: 2.4
+Name: ENYARD
+Version: 0.1
+Requires-Dist: pywinctl
+Requires-Dist: pyautogui
+Requires-Dist: fastapi
+Requires-Dist: uvicorn
+Dynamic: requires-dist

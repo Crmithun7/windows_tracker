@@ -1,0 +1,8 @@
+README.md
+setup.py
+ENYARD.egg-info/PKG-INFO
+ENYARD.egg-info/SOURCES.txt
+ENYARD.egg-info/dependency_links.txt
+ENYARD.egg-info/entry_points.txt
+ENYARD.egg-info/requires.txt
+ENYARD.egg-info/top_level.txt
