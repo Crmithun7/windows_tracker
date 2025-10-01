@@ -1,0 +1,297 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ENYARD-admin</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root { color-scheme: light dark; }
+    .scroll-thin { scrollbar-width: thin; }
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-900">
+  <div class="min-h-screen grid grid-cols-12">
+    <!-- Sidebar -->
+    <aside class="col-span-3 md:col-span-2 border-r bg-white">
+      <div class="p-4 border-b">
+        <h1 class="text-lg font-semibold">WorkForce Mangement</h1>
+        <p class="text-xs text-gray-500">tables & data</p>
+      </div>
+      <div class="p-3">
+        <label class="text-xs text-gray-500">API Base URL</label>
+        <input id="baseUrl" class="mt-1 w-full border rounded-lg px-3 py-2 text-sm" value="http://localhost:8000" />
+      </div>
+      <div class="p-3">
+        <button id="loadTables" class="w-full rounded-xl px-3 py-2 bg-black text-white text-sm">Load Tables</button>
+      </div>
+      <ul id="tables" class="p-2 space-y-1 overflow-auto max-h-[70vh] scroll-thin"></ul>
+    </aside>
+
+    <!-- Main -->
+    <main class="col-span-9 md:col-span-10 p-4">
+      <div class="flex flex-col md:flex-row md:items-end gap-3 mb-4">
+        <div class="flex-1">
+          <label class="text-xs text-gray-500">Selected Table</label>
+          <input id="selectedTable" class="mt-1 w-full border rounded-lg px-3 py-2 text-sm" readonly />
+        </div>
+        <div>
+          <label class="text-xs text-gray-500">Search</label>
+          <input id="search" class="mt-1 border rounded-lg px-3 py-2 text-sm" placeholder="type & press Enter" />
+        </div>
+        <div>
+          <label class="text-xs text-gray-500">Order By</label>
+          <select id="orderBy" class="mt-1 border rounded-lg px-3 py-2 text-sm"></select>
+        </div>
+        <div>
+          <label class="text-xs text-gray-500">Dir</label>
+          <select id="orderDir" class="mt-1 border rounded-lg px-3 py-2 text-sm">
+            <option>asc</option>
+            <option>desc</option>
+          </select>
+        </div>
+        <div>
+          <label class="text-xs text-gray-500">Page Size</label>
+          <select id="pageSize" class="mt-1 border rounded-lg px-3 py-2 text-sm">
+            <option>25</option>
+            <option selected>50</option>
+            <option>100</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="columns" class="text-xs text-gray-500 mb-2"></div>
+
+      <div class="overflow-auto border rounded-xl">
+        <table class="min-w-full text-sm">
+          <thead class="bg-gray-100" id="thead"></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+
+      <div class="flex items-center justify-between mt-3 text-sm">
+        <div id="total" class="text-gray-600">&nbsp;</div>
+        <div class="flex items-center gap-2">
+          <button id="prev" class="px-3 py-1 border rounded-lg">Prev</button>
+          <span id="pageInfo"></span>
+          <button id="next" class="px-3 py-1 border rounded-lg">Next</button>
+        </div>
+      </div>
+
+      <div id="toast" class="fixed right-4 bottom-4 hidden bg-black text-white text-sm px-3 py-2 rounded-lg"></div>
+    </main>
+  </div>
+
+<script>
+  const els = {
+    baseUrl: document.getElementById('baseUrl'),
+    loadTables: document.getElementById('loadTables'),
+    tables: document.getElementById('tables'),
+    selectedTable: document.getElementById('selectedTable'),
+    search: document.getElementById('search'),
+    orderBy: document.getElementById('orderBy'),
+    orderDir: document.getElementById('orderDir'),
+    pageSize: document.getElementById('pageSize'),
+    thead: document.getElementById('thead'),
+    tbody: document.getElementById('tbody'),
+    total: document.getElementById('total'),
+    pageInfo: document.getElementById('pageInfo'),
+    prev: document.getElementById('prev'),
+    next: document.getElementById('next'),
+    columns: document.getElementById('columns'),
+    toast: document.getElementById('toast'),
+  };
+
+  let state = { table: null, columns: [], total: 0, page: 1 };
+
+  function toast(msg) {
+    els.toast.textContent = msg; els.toast.classList.remove('hidden');
+    setTimeout(() => els.toast.classList.add('hidden'), 1500);
+  }
+
+  async function api(path) {
+    const base = els.baseUrl.value.replace(/\/$/, '');
+    const res = await fetch(base + path);
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  }
+
+  async function loadTables() {
+    els.tables.innerHTML = '<li class="px-3 py-2 text-gray-500">Loading…</li>';
+    try {
+      const { tables } = await api('/tables');
+      els.tables.innerHTML = '';
+      if (!tables.length) {
+        els.tables.innerHTML = '<li class="px-3 py-2 text-gray-500">No tables</li>';
+        return;
+      }
+      for (const t of tables) {
+        const li = document.createElement('li');
+        li.className = 'px-3 py-2 rounded-lg hover:bg-gray-100 cursor-pointer';
+        li.textContent = t;
+        li.onclick = () => selectTable(t);
+        els.tables.appendChild(li);
+      }
+      toast('Tables loaded');
+    } catch (e) {
+      els.tables.innerHTML = `<li class="px-3 py-2 text-red-600">${e.message}</li>`;
+    }
+  }
+
+  async function selectTable(table) {
+    state.table = table; state.page = 1; els.selectedTable.value = table;
+    await loadColumns(table);
+    await loadData();
+  }
+
+  async function loadColumns(table) {
+    els.orderBy.innerHTML = '';
+    const data = await api(`/tables/${encodeURIComponent(table)}/columns`);
+    const cols = data.columns.map(c => c.field || c.Field);
+    state.columns = cols;
+    els.columns.textContent = `Columns: ${cols.join(', ')}`;
+    for (const c of cols) {
+      const opt = document.createElement('option'); opt.textContent = c; els.orderBy.appendChild(opt);
+    }
+  }
+
+  function buildQuery() {
+    const limit = parseInt(els.pageSize.value, 10);
+    const offset = (state.page - 1) * limit;
+    const params = new URLSearchParams({ limit, offset, order_dir: els.orderDir.value });
+    const ob = els.orderBy.value; if (ob) params.set('order_by', ob);
+    const s = els.search.value.trim(); if (s) params.set('search', s);
+    return '?' + params.toString();
+  }
+
+  async function loadData() {
+  if (!state.table) return;
+  els.thead.innerHTML = '<tr><th class="px-3 py-2 text-left">Loading…</th></tr>';
+  els.tbody.innerHTML = '';
+  try {
+    const q = buildQuery();
+    const data = await api(`/tables/${encodeURIComponent(state.table)}/data${q}`);
+    state.total = data.total;
+
+    // Header
+    els.thead.innerHTML =
+      '<tr>' + data.columns.map(c => `<th class="px-3 py-2 text-left font-semibold">${c}</th>`).join('') + '</tr>';
+
+    // Rows
+    if (!data.rows.length) {
+      els.tbody.innerHTML = '<tr><td class="px-3 py-4 text-gray-500">No rows</td></tr>';
+    } else {
+      const rowsHtml = data.rows.map(r => {
+        const tds = r.map((v, i) => {
+          const raw = v == null ? '' : v;
+          let cellHtml;
+
+          if (isDataUrl(raw)) {
+            cellHtml = `<img src="${raw}" alt="snapshot" class="max-h-24 rounded">`;
+          } else if (isBlobRef(raw)) {
+            const src = blobToUrl(raw);
+            cellHtml = src ? `<img src="${src}" alt="snapshot" class="max-h-24 rounded">`
+                           : escapeHtml(String(raw));
+          } else if (isLikelyImageUrl(String(raw))) {
+            const src = toImageSrc(String(raw));
+            cellHtml = `<img src="${escapeHtml(src)}" alt="snapshot" class="max-h-24 rounded">`;
+          } else if (
+            /(snapshot|photo|image|pic|frame)/i.test(data.columns[i] || '') &&
+            /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(String(raw))
+          ) {
+            const src = toImageSrc(String(raw));
+            cellHtml = `<img src="${escapeHtml(src)}" alt="snapshot" class="max-h-24 rounded">`;
+          } else {
+            cellHtml = escapeHtml(String(raw));
+          }
+
+          return `<td class="px-3 py-2 border-t align-top">${cellHtml}</td>`;
+        }).join('');
+        return `<tr>${tds}</tr>`;
+      }).join('');
+
+      els.tbody.innerHTML = rowsHtml;
+    }
+
+    // Pager (removed duplicate rowsHtml bug here)
+    const pageSize = parseInt(els.pageSize.value, 10);
+    const totalPages = Math.max(1, Math.ceil(state.total / pageSize));
+    els.pageInfo.textContent = `Page ${state.page} / ${totalPages}`;
+    els.total.textContent = `${state.total} rows`;
+    els.prev.disabled = state.page <= 1;
+    els.next.disabled = state.page >= totalPages;
+  } catch (e) {
+    els.thead.innerHTML = '';
+    els.tbody.innerHTML = `<tr><td class="px-3 py-2 text-red-600">${e.message}</td></tr>`;
+  }
+}
+
+
+  function escapeHtml(s){
+    return s
+      .replaceAll('&','&amp;')
+      .replaceAll('<','&lt;')
+      .replaceAll('>','&gt;')
+      .replaceAll('"','&quot;')
+      .replaceAll("'",'&#39;');
+  }
+
+  function isLikelyImageUrl(v) {
+  if (typeof v !== 'string') return false;
+  const u = v.trim();
+  // absolute or app-mounted paths
+  if (/^(https?:)?\/\//i.test(u) || u.startsWith('/')) {
+    return /\.(png|jpe?g|gif|webp|bmp|svg)(\?.*)?$/i.test(u) || u.startsWith('/snapshots/');
+  }
+  return false;
+}
+
+function toImageSrc(v) {
+  // normalize common DB values (file path -> URL)
+  let s = String(v).trim();
+  // windows path -> snapshots URL (example heuristic)
+  if (/^[a-zA-Z]:\\/.test(s)) {
+    // convert C:\...\snapshots\foo.jpg -> /snapshots/foo.jpg
+    const idx = s.toLowerCase().lastIndexOf('\\snapshots\\');
+    if (idx >= 0) {
+      s = '/snapshots/' + s.slice(idx + '\\snapshots\\'.length).replaceAll('\\','/');
+    }
+  }
+  return s;
+}
+
+function isDataUrl(v) {
+  return typeof v === 'string' && v.startsWith('data:image/');
+}
+
+function isBlobRef(v) {
+  // if your rows contain something like { id: 42 } or "blob:42"
+  return typeof v === 'string' && /^blob:\w+:\w+/.test(v);
+}
+
+function blobToUrl(v) {
+  // expecting pattern blob:<table>:<id>
+  const m = /^blob:([^:]+):(.+)$/.exec(v);
+  if (!m) return null;
+  const table = encodeURIComponent(m[1]);
+  const id = encodeURIComponent(m[2]);
+  // adjust id_col & column if yours differ
+  return `/blob/${table}/id/${id}?column=snapshot_blob&mime=image/jpeg`;
+}
+
+
+  // Events
+  els.loadTables.onclick = () => loadTables();
+  els.prev.onclick = () => { if (state.page > 1) { state.page--; loadData(); } };
+  els.next.onclick = () => { state.page++; loadData(); };
+  els.pageSize.onchange = () => { state.page = 1; loadData(); };
+  els.orderBy.onchange = () => { state.page = 1; loadData(); };
+  els.orderDir.onchange = () => { state.page = 1; loadData(); };
+  els.search.onkeydown = (e) => { if (e.key === 'Enter') { state.page = 1; loadData(); } };
+
+  // Auto-load tables on start
+  loadTables();
+</script>
+</body>
+</html>

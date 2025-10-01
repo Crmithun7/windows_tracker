@@ -1,0 +1,8 @@
+
+# Windows (CMD):
+#   set DB_HOST=localhost && set DB_USER=root && set DB_PASS= && set DB_NAME=enyard_db
+#   uvicorn fastapi_app:app --host 0.0.0.0 --port 8000 --reload
+#
+# Linux/macOS:
+#   export DB_HOST=localhost DB_USER=root DB_PASS= DB_NAME=enyard_db
+#   uvicorn fastapi_app:app --host 0.0.0.0 --port 8000 --reload
